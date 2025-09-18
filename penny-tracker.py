@@ -35,9 +35,6 @@ numPenniesEarned = numPenniesEarned + numPenniesInBank
 print("Pennies Earned Today: ",numPenniesEarned)
 print((myName)+"'s", "Bank Account: ", (numPenniesInBank))
 
-
-# In[ ]:
-
-
+#End of Script
 
 
