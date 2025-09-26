@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import pandas as pd
+
+# Load Excel file
+df = pd.read_excel('SPindices.xlsx', engine='openpyxl')
+
+# Display the first few rows of the dataframe
+print("First few rows of the dataset:")
+print(df.head())
+print('\nColumn names in dataset:')
+print(df.columns.tolist())
+
+# Calculate correlation between S&P 500 and S&P Bond Index and determine whether its positive or negative
+correlation_value = df['S&P 500'].corr(df['S&P 500 Bond Index'], method='pearson')
+print(f"\nCorrelation between S&P 500 and S&P 500 Bond Index: {correlation_value:.4f}")
+if correlation_value > 0:
+    print(f"A - The correlation is positive, indicating that as one index increases, the other tends to increase as well.")
+else:
+    print(f"A - The correlation is negative, indicating that as one index increases, the other tends to decrease.")
+
+# Create two new column evaluating changes in both indices day to day
+# Increase or remain the same = 1, decrease = 0
+df['S&P 500 Change'] = (df['S&P 500'].diff() >= 0).astype(int)
+df['S&P 500 Bond Index Change'] = (df['S&P 500 Bond Index'].diff() >= 0).astype(int)
+print(
+    "\nB - First few rows with change columns:",
+    df[['S&P 500', 'S&P 500 Change', 'S&P 500 Bond Index', 'S&P 500 Bond Index Change']].head()
+)
+
+# Calculate the corelation between the two new columns
+change_correlation = df['S&P 500 Change'].corr(df['S&P 500 Bond Index Change'], method='pearson')
+print(f"\nCorrelation between S&P 500 Change and S&P 500 Bond Index Change: {change_correlation:.4f}")
+if change_correlation > 0:
+    print(f"C - The correlation is positive, indicating that when one index increases or remains the same, the other tends to do the same.")
+else:
+    print(f"C - The correlation is negative, indicating that when one index increases or remains the same, the other tends to decrease.")   
+
+# 
