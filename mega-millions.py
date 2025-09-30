@@ -38,11 +38,11 @@ loopCount = 0                            # initalize a loop count variable
     # Add lottoNumber to lottoNumbers.
     # Don't worry right now about duplicate numbers.
 
-loopcout = 0
-while loopCount < 5:                     # loop eactly five times
-    lottoNumber = rd.randint(1,77)       # generate a random integer
+lloopCountt = 0
+for _ range(5):                          # loop eactly five times
+    lottoNumber = rd.randint(1,76)       # generate a random integer
     lottoNumbers.append(lottoNumber)     # add (append) random integer to the list
-    loopCount = loopCount + 1            # increment on the loop count each time
+#   loopCount = loopCount + 1            # increment on the loop count each time
     
 # Generate one Mega Ball random integer from 1 to 25.
 # Store in a variable called megaBallNumber.
