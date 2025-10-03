@@ -1,0 +1,17 @@
+from scipy import stats
+import math
+
+# Given values
+x_bar = 163862      # sample mean
+mu_0 = 150000       # null hypothesis mean
+s = 67680.6         # sample std dev
+n = 1047            # sample size
+
+# t-statistic
+t_stat = (x_bar - mu_0) / (s / math.sqrt(n))
+
+# one-tailed p-value (greater than)
+p_value = 1 - stats.t.cdf(t_stat, df=n-1)
+
+print(f"T-statistic: {t_stat:.4f}")
+print(f"P-value: {p_value:.4f}")
