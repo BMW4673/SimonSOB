@@ -1,0 +1,126 @@
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import yfinance as yf
+
+# Download Data
+tickers = ['HD', 'AAPL', 'VZ', 'CSCO', '^GSPC']
+raw = yf.download(tickers, start="1990-01-01", end="1999-12-31", interval='1mo')
+prices = raw['Close']
+
+# Compute Returns
+returns = prices.pct_change().dropna()
+
+#Risk-free Rate Placeholder
+rf = 0.03/12
+returns['Rf'] = rf
+
+#Construct Excess Returns
+stocks = ['HD', 'AAPL', 'VZ', 'CSCO']
+market = '^GSPC'
+
+excess = pd.DataFrame()
+for c in stocks:
+    excess[c] = returns[c] - returns['Rf']
+    
+#Market Excess Returns
+excess['Mkt'] = returns[market] - returns['Rf']
+
+#Regression on Each Firm
+results = {}
+for c in stocks:
+    Y = excess[c]
+    X = sm.add_constant(excess['Mkt'])
+    model = sm.OLS(Y, X).fit()
+    results[c] = model
+    print(f"==={c} Regression Results ===")
+    print(model.summary())
+
+#Extract Key Values
+alpha = model.params['const']
+beta = model.params['Mkt']
+p_alpha = model.pvalues['const']
+p_beta = model.pvalues['Mkt']
+
+#Prepare results table
+rows = []
+
+for c in stocks:
+    model = results[c]
+    
+    avg_return = returns[c].mean()
+    alpha = model.params['const']
+    p_alpha = model.pvalues['const']
+    beta = model.params['Mkt']
+    p_beta = model.pvalues['Mkt']
+    r2 = model.rsquared
+
+    rows.append([avg_return, alpha, p_alpha, beta, p_beta, r2])
+
+columns = [
+    "E(R): Average Return",
+    "alpha_hat",
+    "p-value alpha",
+    "beta_hat",
+    "p-value beta",
+    "R_squared"
+]
+
+results_table = pd.DataFrame(rows, index=stocks, columns=columns)
+
+# Transpose so constructs are rows and stocks are columns
+results_table = results_table.T
+
+print(results_table)
+
+# -------------------------------------------------------
+# Visualization Section
+# -------------------------------------------------------
+import matplotlib.pyplot as plt
+
+# 1. CAPM Regression Scatterplots for Each Stock
+for c in stocks:
+    plt.figure(figsize=(7,5))
+    plt.scatter(excess['Mkt'], excess[c], alpha=0.6, label=f'{c} Excess Returns')
+    
+    # Regression line
+    model = results[c]
+    intercept = model.params['const']
+    slope = model.params['Mkt']
+    x_vals = np.linspace(excess['Mkt'].min(), excess['Mkt'].max(), 100)
+    y_vals = intercept + slope * x_vals
+    plt.plot(x_vals, y_vals, color='red', label=f'CAPM Line (β={slope:.2f})')
+    
+    plt.title(f'CAPM Regression: {c}')
+    plt.xlabel('Market Excess Return (Rm - Rf)')
+    plt.ylabel(f'{c} Excess Return')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'{c}_CAPM_scatter.png')
+    plt.close()
+
+# 2. Beta Comparison Bar Chart
+betas = [results[c].params['Mkt'] for c in stocks]
+plt.figure(figsize=(7,5))
+plt.bar(stocks, betas, color='skyblue')
+plt.title('Beta Comparison Across Stocks')
+plt.ylabel('Beta (Sensitivity to Market)')
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('beta_comparison.png')
+plt.close()
+
+# 3. Alpha Significance Bar Chart
+alphas = [results[c].params['const'] for c in stocks]
+alpha_pvals = [results[c].pvalues['const'] for c in stocks]
+colors = ['green' if p < 0.05 else 'gray' for p in alpha_pvals]
+
+plt.figure(figsize=(7,5))
+plt.bar(stocks, alphas, color=colors)
+plt.title('Alpha Estimates (Green = Significant)')
+plt.ylabel('Alpha')
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('alpha_significance.png')
+plt.close()

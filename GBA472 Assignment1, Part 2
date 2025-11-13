@@ -1,0 +1,131 @@
+#Importing necessary libraries
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+#Import File & Investigate
+df=pd.read_csv('Rfj_data.csv')
+print(df.head())
+print(df.columns)
+
+# Define brand mapping
+brands = {
+    "tropicana": {"q": "q1", "p": "p1"},
+    "minute_maid": {"q": "q2", "p": "p2"},
+    "private_label": {"q": "q3", "p": "p3"}
+}
+
+results = {}
+
+# Loop through brands and run OLS
+for name, cols in brands.items():
+    Q = df[cols["q"]]
+    P = df[cols["p"]]
+    X = sm.add_constant(P)
+    model = sm.OLS(Q, X).fit()
+    results[name] = model
+    print(f"\n=== {name.upper()} Regression Results ===")
+    print(model.summary())
+
+# Compute average price and quantity for each brand
+avg = {}
+
+print("\n=== AVERAGE PRICE AND QUANTITY BY BRAND ===")
+for name, cols in brands.items():
+    pbar = df[cols["p"]].mean()
+    qbar = df[cols["q"]].mean()
+    avg[name] = {"avg_price": pbar, "avg_quantity": qbar}
+    print(f"{name}:  avg_price = {pbar:.6f},  avg_quantity = {qbar:.2f}")
+
+# Compute elasticity for each brand
+elasticity = {}
+
+print("\n=== OWN-PRICE ELASTICITIES ===")
+for name, model in results.items():
+    beta = model.params[1]   # slope coefficient
+    pbar = avg[name]["avg_price"]
+    qbar = avg[name]["avg_quantity"]
+    e = beta * (pbar / qbar)
+    elasticity[name] = e
+    print(f"{name}: elasticity = {e:.4f}")
+
+# Compute optimal price using Lerner condition
+MC = 0.01  # 1 cent per ounce
+
+optimal_price = {}
+
+print("\n=== OPTIMAL PRICES (LERNE R CONDITION) ===")
+for name, e in elasticity.items():
+    p_star = MC / (1 + 1/e)
+    optimal_price[name] = p_star
+    print(f"{name}: optimal_price = {p_star:.4f}")
+
+# -------------------------------------------------------
+# EXPORT TABLES FOR WORD / EXCEL
+# -------------------------------------------------------
+import pandas as pd
+
+# Create DataFrames from dictionaries
+elasticity_df = pd.DataFrame.from_dict(elasticity, orient='index', columns=['elasticity'])
+optimal_price_df = pd.DataFrame.from_dict(optimal_price, orient='index', columns=['optimal_price'])
+
+# Save as CSV
+elasticity_df.to_csv('elasticity_results.csv')
+optimal_price_df.to_csv('optimal_price_results.csv')
+
+# Save as Excel workbook
+with pd.ExcelWriter("OJ_results.xlsx") as writer:
+    elasticity_df.to_excel(writer, sheet_name="elasticity")
+    optimal_price_df.to_excel(writer, sheet_name="optimal_prices")
+
+print("\nTables exported: elasticity_results.csv, optimal_price_results.csv, OJ_results.xlsx\n")
+
+# -------------------------------------------------------
+# VISUALIZATIONS
+# -------------------------------------------------------
+import matplotlib.pyplot as plt
+
+# 1. Demand curve scatter + fitted line for each brand
+for name, cols in brands.items():
+    Q = df[cols["q"]]
+    P = df[cols["p"]]
+    model = results[name]
+    intercept = model.params['const']
+    slope = model.params[cols["p"]]
+
+    plt.figure(figsize=(7,5))
+    plt.scatter(P, Q, alpha=0.6, label='Observed Data')
+    
+    # Fitted line
+    P_line = np.linspace(P.min(), P.max(), 100)
+    Q_line = intercept + slope * P_line
+    plt.plot(P_line, Q_line, color='red', label='Fitted Demand Curve')
+
+    plt.title(f'Demand Curve: {name.replace("_", " ").title()}')
+    plt.xlabel('Price')
+    plt.ylabel('Quantity Sold')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'demand_curve_{name}.png')
+    plt.close()
+
+# 2. Elasticity comparison bar chart
+plt.figure(figsize=(7,5))
+plt.bar(elasticity.keys(), [elasticity[b] for b in elasticity], color='orange')
+plt.title('Own-Price Elasticity by Brand')
+plt.ylabel('Elasticity')
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('elasticity_comparison.png')
+plt.close()
+
+# 3. Optimal price comparison bar chart
+plt.figure(figsize=(7,5))
+plt.bar(optimal_price.keys(), [optimal_price[b] for b in optimal_price], color='green')
+plt.title('Optimal Price (Lerner Condition)')
+plt.ylabel('Optimal Price ($)')
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('optimal_prices.png')
+plt.close()
