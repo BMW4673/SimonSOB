@@ -1,8 +1,8 @@
 import pandas as pd
 import statsmodels.api as sm
 
-# Load dataset
-df = pd.read_csv('GBA472 Assignment 2/data.csv')
+# Load dataset from the local directory
+df = pd.read_csv('data.csv')
 
 # Add BET Performer with unknown sale price and BDI
 bet_performer = {
@@ -26,6 +26,72 @@ df_numeric = df.copy()
 df_numeric = df_numeric[df_numeric['Vessel Name'] != 'BET Performer']
 df_numeric['DWT_diff'] = (df_numeric['Deadweight_000_tons'] - target_dwt).abs()
 closest = df_numeric.loc[df_numeric['DWT_diff'].idxmin()]
+
+# --- Minimal Regression Block for Variation Explained ---
+df_reg = df_numeric.copy()
+df_reg = df_reg[(df_reg['Sale Price_USD_millions'] != 'Unknown') & (df_reg['Trailing1yrAvgMonthlyBDI'] != 'Unknown')]
+
+df_reg = df_reg.astype({
+    'Sale Price_USD_millions': float,
+    'Deadweight_000_tons': float,
+    'Age_at_Sale_years': float,
+    'Trailing1yrAvgMonthlyBDI': float
+})
+
+X = df_reg[['Deadweight_000_tons', 'Age_at_Sale_years', 'Trailing1yrAvgMonthlyBDI']]
+X = sm.add_constant(X)
+y = df_reg['Sale Price_USD_millions']
+
+model = sm.OLS(y, X).fit()
+print("\nModel Fit Statistics:")
+print(f"  R-squared: {model.rsquared:.4f}")
+print(f"  Adjusted R-squared: {model.rsquared_adj:.4f}\n")
+# --- End Regression Block ---
+
+# --- Partial R² for each regressor ---
+n = model.nobs
+k = len(model.params) - 1  # number of predictors
+
+print("Partial R² for each regressor:")
+for var in model.params.index:
+    if var == 'const':
+        continue
+    t = model.tvalues[var]
+    partial_r2 = (t**2) / (t**2 + (n - k - 1))
+    print(f"  {var}: {partial_r2:.4f}")
+
+# --- End Partial R² ---
+
+# --- Prediction and Intervals for BET Performer (only if BDI known) ---
+import numpy as np
+from scipy import stats
+
+# Check if BET Performer has numeric BDI and Sale Price missing
+bet = df[df['Vessel Name'] == 'BET Performer'].iloc[0]
+
+try:
+    dwt_bet = float(bet['Deadweight_000_tons'])
+    age_bet = float(bet['Age_at_Sale_years'])
+    bdi_bet = float(bet['Trailing1yrAvgMonthlyBDI'])
+
+    X_new = pd.DataFrame({
+        'const': [1],
+        'Deadweight_000_tons': [dwt_bet],
+        'Age_at_Sale_years': [age_bet],
+        'Trailing1yrAvgMonthlyBDI': [bdi_bet]
+    })
+
+    pred = model.get_prediction(X_new)
+    summary = pred.summary_frame(alpha=0.05)
+
+    print("\n--- Prediction for BET Performer ---")
+    print(f"Predicted Price: {summary['mean'].iloc[0]:.2f} million USD")
+    print(f"95% CI for mean price: [{summary['mean_ci_lower'].iloc[0]:.2f}, {summary['mean_ci_upper'].iloc[0]:.2f}]")
+    print(f"95% Prediction Interval: [{summary['obs_ci_lower'].iloc[0]:.2f}, {summary['obs_ci_upper'].iloc[0]:.2f}]")
+
+except:
+    print("\nBET Performer prediction skipped (BDI missing). Add numeric BDI to enable prediction.")
+# --- End Prediction Block ---
 
 # Format dataset
 # - Sale Date as month-year (e.g., Jan-07)
@@ -65,8 +131,8 @@ print(
     f"  Sale Amount: {closest_formatted['Sale Price_USD_millions']}\n"
 )
 
-# Save a formatted copy
-df.to_csv('GBA472 Assignment 2/data_formatted.csv', index=False)
+# Save a formatted copy next to the source file
+df.to_csv('data_formatted.csv', index=False)
 
 # Preview formatted data
 #print(df.head())
