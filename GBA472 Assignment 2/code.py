@@ -12,7 +12,7 @@ bet_performer = {
     'Year Built': 1997,
     'Age_at_Sale_years': 11,
     'Deadweight_000_tons': 172.0,  # 172,000 DWT expressed in thousand tons
-    'Trailing1yrAvgMonthlyBDI': 'Unknown'
+    'Trailing1yrAvgMonthlyBDI': None
 }
 new_row = pd.DataFrame(
     [[bet_performer[col] for col in df.columns]],
@@ -20,119 +20,72 @@ new_row = pd.DataFrame(
 )
 df = pd.concat([df, new_row], ignore_index=True)
 
-# Find vessel closest to BET Performer by DWT (exclude BET Performer itself)
-target_dwt = bet_performer['Deadweight_000_tons']
-df_numeric = df.copy()
-df_numeric = df_numeric[df_numeric['Vessel Name'] != 'BET Performer']
-df_numeric['DWT_diff'] = (df_numeric['Deadweight_000_tons'] - target_dwt).abs()
-closest = df_numeric.loc[df_numeric['DWT_diff'].idxmin()]
+# ---------------------------------------------------------
+# Minimal regression and prediction workflow
+# ---------------------------------------------------------
 
-# --- Minimal Regression Block for Variation Explained ---
-df_reg = df_numeric.copy()
-df_reg = df_reg[(df_reg['Sale Price_USD_millions'] != 'Unknown') & (df_reg['Trailing1yrAvgMonthlyBDI'] != 'Unknown')]
-
-df_reg = df_reg.astype({
+# Convert necessary columns to numeric
+df_clean = df.copy()
+df_clean = df_clean[df_clean['Sale Price_USD_millions'] != 'Unknown']
+df_clean = df_clean.astype({
     'Sale Price_USD_millions': float,
     'Deadweight_000_tons': float,
     'Age_at_Sale_years': float,
     'Trailing1yrAvgMonthlyBDI': float
 })
 
-X = df_reg[['Deadweight_000_tons', 'Age_at_Sale_years', 'Trailing1yrAvgMonthlyBDI']]
+# Build regression
+X = df_clean[['Deadweight_000_tons', 'Age_at_Sale_years', 'Trailing1yrAvgMonthlyBDI']]
 X = sm.add_constant(X)
-y = df_reg['Sale Price_USD_millions']
+y = df_clean['Sale Price_USD_millions']
 
+# (c) Model fit: how well the three factors jointly explain ship prices
 model = sm.OLS(y, X).fit()
-print("\nModel Fit Statistics:")
-print(f"  R-squared: {model.rsquared:.4f}")
-print(f"  Adjusted R-squared: {model.rsquared_adj:.4f}\n")
-# --- End Regression Block ---
+print("\n=== MODEL SUMMARY (MINIMAL) ===")
+print(model.summary())
 
-# --- Partial R² for each regressor ---
-n = model.nobs
-k = len(model.params) - 1  # number of predictors
+# ---------------------------------------------------------
+# BET Performer prediction (BDI hardcoded from table)
+# ---------------------------------------------------------
 
-print("Partial R² for each regressor:")
-for var in model.params.index:
-    if var == 'const':
-        continue
-    t = model.tvalues[var]
-    partial_r2 = (t**2) / (t**2 + (n - k - 1))
-    print(f"  {var}: {partial_r2:.4f}")
+dwt_bet = 172.0
+age_bet = 11
+bdi_bet = 10526   # From Jan-08 table
 
-# --- End Partial R² ---
+X_new = pd.DataFrame({
+    'const': [1],
+    'Deadweight_000_tons': [dwt_bet],
+    'Age_at_Sale_years': [age_bet],
+    'Trailing1yrAvgMonthlyBDI': [bdi_bet]
+})
 
-# --- Prediction and Intervals for BET Performer (only if BDI known) ---
-import numpy as np
-from scipy import stats
+# (d) Predicted price for BET Performer + 95% CI and 95% PI
+pred = model.get_prediction(X_new).summary_frame(alpha=0.05)
 
-# Check if BET Performer has numeric BDI and Sale Price missing
-bet = df[df['Vessel Name'] == 'BET Performer'].iloc[0]
+print("\n=== BET PERFORMER PREDICTION ===")
+print(pred)
 
-try:
-    dwt_bet = float(bet['Deadweight_000_tons'])
-    age_bet = float(bet['Age_at_Sale_years'])
-    bdi_bet = float(bet['Trailing1yrAvgMonthlyBDI'])
+# ---------------------------------------------------------
+# Scenario analysis (point predictions only)
+# ---------------------------------------------------------
 
-    X_new = pd.DataFrame({
-        'const': [1],
-        'Deadweight_000_tons': [dwt_bet],
-        'Age_at_Sale_years': [age_bet],
-        'Trailing1yrAvgMonthlyBDI': [bdi_bet]
-    })
+# (e) Scenario analysis: age change, DWT change, and BDI change (point predictions only)
+# 1. Age = 6
+X_age6 = X_new.copy()
+X_age6['Age_at_Sale_years'] = 6
+price_age6 = model.predict(X_age6)[0]
 
-    pred = model.get_prediction(X_new)
-    summary = pred.summary_frame(alpha=0.05)
+# 2. DWT = 152
+X_dwt152 = X_new.copy()
+X_dwt152['Deadweight_000_tons'] = 152.0
+price_dwt152 = model.predict(X_dwt152)[0]
 
-    print("\n--- Prediction for BET Performer ---")
-    print(f"Predicted Price: {summary['mean'].iloc[0]:.2f} million USD")
-    print(f"95% CI for mean price: [{summary['mean_ci_lower'].iloc[0]:.2f}, {summary['mean_ci_upper'].iloc[0]:.2f}]")
-    print(f"95% Prediction Interval: [{summary['obs_ci_lower'].iloc[0]:.2f}, {summary['obs_ci_upper'].iloc[0]:.2f}]")
+# 3. BDI = 30% lower
+X_bdi_low = X_new.copy()
+X_bdi_low['Trailing1yrAvgMonthlyBDI'] = bdi_bet * 0.70
+price_bdi_low = model.predict(X_bdi_low)[0]
 
-except:
-    print("\nBET Performer prediction skipped (BDI missing). Add numeric BDI to enable prediction.")
-# --- End Prediction Block ---
-
-# Format dataset
-# - Sale Date as month-year (e.g., Jan-07)
-df['Sale Date'] = pd.to_datetime(df['Sale Date'], format='%b-%y', errors='coerce').dt.strftime('%b-%y')
-
-# - Sale Price as USD millions with currency marker
-def format_price(v):
-    try:
-        return f"${float(v):,.1f}M"
-    except (TypeError, ValueError):
-        return "Unknown"
-df['Sale Price_USD_millions'] = df['Sale Price_USD_millions'].apply(format_price)
-
-# - Deadweight as thousand tons with a unit suffix
-def format_dwt(v):
-    try:
-        return f"{float(v):,.1f}k tons"
-    except (TypeError, ValueError):
-        return "Unknown"
-df['Deadweight_000_tons'] = df['Deadweight_000_tons'].apply(format_dwt)
-
-# - Capesize index (Trailing1yrAvgMonthlyBDI) with thousands separator
-def format_bdi(v):
-    try:
-        return f"{int(v):,}"
-    except (TypeError, ValueError):
-        return "Unknown"
-df['Trailing1yrAvgMonthlyBDI'] = df['Trailing1yrAvgMonthlyBDI'].apply(format_bdi)
-
-# Report closest vessel details after headers, spaced from other content
-closest_formatted = df[df['Vessel Name'] == closest['Vessel Name']].iloc[0]
-print("\nClosest vessel by DWT to BET Performer:")
-print(
-    f"  Name: {closest_formatted['Vessel Name']}\n"
-    f"  Tonnage: {closest_formatted['Deadweight_000_tons']}\n"
-    f"  Build Year: {closest_formatted['Year Built']}\n"
-    f"  Sale Amount: {closest_formatted['Sale Price_USD_millions']}\n"
-)
-
-# Save a formatted copy next to the source file
-df.to_csv('data_formatted.csv', index=False)
-
-# Preview formatted data
-#print(df.head())
+print("\n=== SCENARIO ANALYSIS (POINT PREDICTIONS) ===")
+print(f"If 5 years younger (age 6): {price_age6:.2f}M")
+print(f"If 20k DWT smaller (152k): {price_dwt152:.2f}M")
+print(f"If BDI 30% lower: {price_bdi_low:.2f}M")
