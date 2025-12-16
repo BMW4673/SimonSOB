@@ -1,0 +1,61 @@
+import pandas as pd 
+import numpy
+import statsmodels.api as sm
+
+# Load dataset from the local directory
+df = pd.read_excel('GBA472 Final Exam/mortgage.xlsx') 
+#print(df.head())
+#print(df.columns)
+
+#Question 1: regression on pi_rat, single, selfemp, condo and probunmp 
+print("Question 1: Full Model Regression Results")
+X = df[['pi_rat', 'single', 'selfemp', 'condo', 'probunmp']]
+X = sm.add_constant(X)
+y = df['deny']
+
+model_full = sm.OLS(y, X).fit()
+print(model_full.summary())
+
+#Question 2: regression on only pi_rat, single, selfemp
+print("\nQuestion 2: Reduced Model Regression Results")
+X2 = df[['pi_rat', 'single', 'selfemp']]
+X2 = sm.add_constant(X2)
+y = df['deny']
+
+model_q2 = sm.OLS(y, X2).fit()
+print(model_q2.summary())
+
+case_a = pd.DataFrame({
+    'const': [1],
+    'pi_rat': [0.4],
+    'single': [1],
+    'selfemp': [1]
+})
+
+pred_a = model_q2.predict(case_a)
+print(f"\nPredicted deny probability for Case A: {pred_a.iloc[0]:.4f}")
+
+case_b = pd.DataFrame({
+    'const': [1],
+    'pi_rat': [0.4],
+    'single': [0],
+    'selfemp': [0]
+})
+
+pred_b = model_q2.predict(case_b)
+print(f"Predicted deny probability for Case B: {pred_b.iloc[0]:.4f}")
+
+#Question 3: Compute 95% confidence interfalces for each of the predictions in part 2.
+pred_a_ci = model_q2.get_prediction(case_a).summary_frame(alpha=0.05)
+pred_b_ci = model_q2.get_prediction(case_b).summary_frame(alpha=0.05)
+
+print(f"\n95% CI for Case A (average prediction):")
+print(pred_a_ci[['mean', 'mean_ci_lower', 'mean_ci_upper']])
+
+print(f"\n95% CI for Case B (average prediction):")
+print(pred_b_ci[['mean', 'mean_ci_lower', 'mean_ci_upper']])
+
+#Question 4: Joint F-test that condo = 0 and probunmp = 0
+f_test = model_full.f_test("condo = 0, probunmp = 0")
+print("\nQuestion 4: F-test for condo = 0 and probunmp = 0")
+print(f_test)
